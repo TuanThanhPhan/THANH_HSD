@@ -1,0 +1,14 @@
+torch>=2.0
+transformers>=4.35
+sentencepiece
+tokenizers
+
+pandas
+numpy
+scikit-learn
+
+pyvi
+regex
+tqdm
+
+tensorboard

@@ -1,0 +1,242 @@
+# ==========================================
+# NHÓM 1: CHÍNH TRỊ & NHẠY CẢM (RECONNAISSANCE)
+# ==========================================
+331,chính_trị
+420,cần_sa
+44,tự_tử
+69,quan_hệ
+///,ba_que
+3/,ba_que
+3 sọc,ba_que
+3que,ba_que
+kali,ca_li
+bodỏ,bò_đỏ
+tàu+,tàu_cộng
+dlv,dư_luận_viên
+CS,cộng_sản
+cs,cộng_sản
++sản,cộng_sản
++ s,cộng_sản
+ĐCS,Đảng_cộng_sản
+ĐCSVN,Đảng_cộng_sản_việt_nam
+dcsvn,Đảng_cộng_sản_việt_nam
+VNCH,Việt_nam_cộng_hòa
+CA,công_an
+csgt,cảnh_sát_giao_thông
+QĐ,quân_đội
+QD,quân_đội
+VN,việt_nam
+vn,việt_nam
+TQ,trung_quốc
+q.g,quốc_gia
+thoinat,thối_nát
+xh,xã_hội
+LĐ,lãnh_đạo
+
+# ==========================================
+# NHÓM 2: CÔNG KÍCH & CHỬI BỚI (HATE SPEECH)
+# ==========================================
+đ.m,đm
+d.m,đm
+đ_m,đm
+d_m,đm
+đm,đm
+dm,đm
+DM,địt_mẹ
+du me,đm
+dcm,đcm
+dcmm,đcmm
+đcmm,đcmm
+dkm,đcm
+đkm,đcm
+đ.m.m,đmm
+d.m.m,đmm
+dmm,đmm
+đjt,địt
+đit,địt
+đj t,địt
+đ.i.t,địt
+đ.ị.t,địt
+d.i.t,địt
+đjt me,đmm
+đjt cụ,đcm
+đjt con me,đcmm
+cl,cl
+c.l,cl
+c_l,cl
+clm,clm
+c.l.m,clm
+clme,clm
+cc,cc
+ml,mặt_lồn
+m.l,mặt_lồn
+hãm_l,hãm_lồn
+hl,hãm_lồn
+óc,óc_chó
+occho,óc_chó
+o.c,óc_chó
+o.c.c.h.o,óc_chó
+nguu,ngu
+ngulol,ngu
+thang ngu,thằng_ngu
+thang cho,thằng_chó
+con pho,con_phò
+p.h.o,phò
+c.a.v.e,phò
+sv,sinh_vật
+s.v,sinh_vật
+sivat,sinh_vật
+bđ,bê_đê
+đầnđộn,đần_độn
+kvl,khốn_nạn
+kđ,khốn_nạn
+rác,rác_rưởi
+rac ruoi,rác_rưởi
+rách,rác_rưởi
+lu do,lũ_dơ
+dơ,bẩn_thỉu
+bon kien thuc,bọn_kiến_thức
+
+# ==========================================
+# NHÓM 3: TỪ LÓNG CẢM XÚC & GEN Z (INTENSIFIERS)
+# ==========================================
+vcl,vcl
+v.c.l,vcl
+vkl,vcl
+vclll,vcl
+vl,vl
+v.l,vl
+v_l,vl
+vc,vl
+vãi,rất
+vcl luôn,vcl
+clgt,cái_lồn_gì_thế
+clgv,cái_lồn_gì_vậy
+vclgv,vcl_gì_vậy
+atm,anh_thế_mới
+atms,anh_thế_mới_sợ
+lol,cười
+haha,cười
+hihi,cười
+kkk,cười
+flex,khoe_khoang
+cook,cút
+cút,cút
+ngạo nghễ,tự_hào_mù_quáng
+tự nhục,hèn_hạ
+chếch choáng,ngáo
+xu cà na,xui_xẻo
+Gato,ghen_tị
+phốt,scandal
+drama,biến_căng
+
+# ==========================================
+# NHÓM 4: ĐẠI TỪ & QUAN HỆ (NORMALIZATION)
+# ==========================================
+tui,tôi
+toy,tôi
+toi,tôi
+tớ,tôi
+mik,mình
+mk,mình
+mih,mình
+bn,bạn
+b,bạn
+bạnn,bạn
+ae,anh_em
+ace,anh_chị_em
+ng,người
+nguoi,người
+mn,mọi_người
+mng,mọi_người
+mọing,mọi_người
+vk,vợ
+ck,chồng
+ny,người_yêu
+nyc,người_yêu_cũ
+
+# ==========================================
+# NHÓM 5: PHỦ ĐỊNH & NGÔN NGỮ CHÁT
+# ==========================================
+k,không
+ko,không
+KO,không
+k0,không
+kh,không
+kg,không
+khg,không
+hok,không
+khong,không
+khum,không
+hem,không
+hong,không
+hông,không
+đc,được
+dc,được
+dk,được
+đk,được
+ntn,như_thế_nào
+nnao,như_thế_nào
+tn,thế_nào
+ak,à
+ah,à
+a,à
+uk,ừ
+uh,ừ
+uhm,ừ
+um,ừ
+iu,yêu
+yeu,yêu
+
+# ==========================================
+# NHÓM 6: CÔNG NGHỆ & MẠNG XÃ HỘI
+# ==========================================
+fb,facebook
+insta,instagram
+tt,tiktok
+tóp tóp,tiktok
+toptop,tiktok
+acc,tài_khoản
+nick,tài_khoản
+ad,quản_trị
+admin,quản_trị
+mod,quản_trị
+nt,nhắn_tin
+ntin,nhắn_tin
+ib,nhắn_tin
+inb,nhắn_tin
+rep,trả_lời
+trl,trả_lời
+cmt,bình_luận
+cmnt,bình_luận
+bl,bình_luận
+nx,nhận_xét
+rv,đánh_giá
+review,đánh_giá
+bt,biết
+bik,biết
+biet,biết
+vs,với
+voi,với
+trc,trước
+truoc,trước
+
+# ==========================================
+# NHÓM 7: EMOJI & BIỂU TƯỢNG (VISUAL SLANG)
+# ==========================================
+🍎,phò
+🍏,phò
+🍌,quan_hệ
+ eggplant,quan_hệ
+🌽,quan_hệ
+🤡,mỉa_mai
+🤌,clgv
+🚩,độc_hại
+🤮,tởm
+💩,rác_rưởi
+🖕,chửi_thề
+💀,chết
+⚰️,chết
+👻,tử_vong
+💉,nghiện
+💊,nghiện

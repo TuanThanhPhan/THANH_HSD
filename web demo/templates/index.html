@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HATE SPEECH DETECTION</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        /* CSS bổ sung trực tiếp nếu file style.css chưa có nội dung */
+        .main-container { max-width: 800px; margin-top: 20px; }
+        .card-prediction { border-left: 10px solid; }
+    </style>
+</head>
+<body>
+    <div class="container main-container">
+        <div class="text-center mb-5">
+            <h1 class="fw-bold text-primary">🛡️ DEMO HATE SPEECH DETECTION</h1>
+            <p class="text-muted">Phát hiện phát ngôn tiêu cực trên mạng xã hội</p>
+        </div>
+
+        <div class="card shadow p-4 mb-4">
+            <form method="POST">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Nội dung cần phân tích:</label>
+                    <textarea class="form-control" name="content" rows="6" 
+                              placeholder="Nhập nội dung"></textarea>
+                </div>
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-primary btn-lg">Kiểm tra ngay</button>
+                </div>
+            </form>
+        </div>
+
+        {% if result %}
+        <div class="result-section animate__animated animate__fadeIn">
+            <div class="card card-prediction shadow-sm border-{{ result.color }}">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="text-muted mb-1">Kết quả dự đoán:</h5>
+                            <h2 class="text-{{ result.color }} fw-bold">{{ result.label }}</h2>
+                        </div>
+                        <div class="text-end">
+                            <h5 class="text-muted mb-1">Độ tin cậy:</h5>
+                            <h2 class="fw-bold">{{ result.conf }}%</h2>
+                        </div>
+                    </div>
+                    <hr>
+                    <p class="card-text"><strong>Dữ liệu gốc:</strong> <em>{{ result.text }}</em></p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
