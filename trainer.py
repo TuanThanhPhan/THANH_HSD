@@ -28,7 +28,7 @@ class Trainer:
             labels = batch["label"].to(self.device)
 
             # Check rõ ràng loại model thay vì check key trong dict
-            if self.model_type == "hybrid":
+            if self.model_type in ["hybrid", "phobert_charcnn"]:
                 char_in = batch["char_input"].to(self.device)
                 logits = self.model(input_ids, mask, char_in)
             else:
@@ -63,7 +63,7 @@ class Trainer:
                 mask = batch["attention_mask"].to(self.device)
                 labels = batch["label"].to(self.device)
 
-                if self.model_type == "hybrid":
+                if self.model_type in ["hybrid", "phobert_charcnn"]:
                     char_in = batch["char_input"].to(self.device)
                     logits = self.model(input_ids, mask, char_in)
                 else:

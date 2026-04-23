@@ -4,9 +4,9 @@ MAX_LEN = 128
 EPOCHS = 50
 PATIENCE = 8
 
-TRAIN_PATH = "data/processed/final_train.csv"
-DEV_PATH = "data/processed/final_dev.csv"
-TEST_PATH = "data/processed/final_test.csv"
+TRAIN_PATH = "data/train.csv"
+DEV_PATH = "data/dev.csv"
+TEST_PATH = "data/test.csv"
 
 SAVE_DIR = "/content/drive/MyDrive/Checkpoints"
 

@@ -15,10 +15,11 @@ from utils.dataloader import ViHSDDataset
 from models.model import HybridHateSpeechModel
 from models.phobert_model import PhoBERTModel
 from models.visobert_model import ViSoBERTModel
+from models.phobertcharCNN_model import PhobertCharCNNModel
 
 def plot_confusion_matrix(y_true, y_pred, model_type, split):
     cm = confusion_matrix(y_true, y_pred)
-    plt.figure(figsize=(8, 6))
+    plt.figure(figsize=(6, 4))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
                 xticklabels=["Bình thường", "Gây hấn", "Tiêu cực"],
                 yticklabels=["Bình thường", "Gây hấn", "Tiêu cực"])
@@ -33,13 +34,13 @@ def plot_confusion_matrix(y_true, y_pred, model_type, split):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_type", type=str, default="hybrid", choices=["phobert", "visobert", "hybrid"])
+    parser.add_argument("--model_type", type=str, default="hybrid", choices=["phobert", "visobert", "hybrid", "phobert_charcnn"])
     parser.add_argument("--model_name", type=str, default=None)
     parser.add_argument("--split", type=str, default="test", choices=["dev", "test"])
     args = parser.parse_args()
 
     if args.model_name is None:
-        if args.model_type in ["phobert", "hybrid"]:
+        if args.model_type in ["phobert", "hybrid", "phobert_charcnn"]:
             args.model_name = "vinai/phobert-base"
         elif args.model_type == "visobert":
             args.model_name = "uitnlp/visobert" 
@@ -71,6 +72,8 @@ def main():
         model = ViSoBERTModel(args.model_name)
     elif args.model_type == "hybrid":
         model = HybridHateSpeechModel(args.model_name, len(char_to_idx) + 2)
+    elif args.model_type == "phobert_charcnn":
+        model = PhobertCharCNNModel(args.model_name, len(char_to_idx) + 2)
 
     model_path = os.path.join(config.SAVE_DIR, f"{args.model_type}_best.pt")
     checkpoint = torch.load(model_path, map_location=device)
@@ -86,7 +89,7 @@ def main():
             input_ids = batch["input_ids"].to(device)
             mask = batch["attention_mask"].to(device)
 
-            if args.model_type == "hybrid":
+            if args.model_type in ["hybrid", "phobert_charcnn"]:
                 char_in = batch["char_input"].to(device)
                 logits = model(input_ids, mask, char_in)
             else:

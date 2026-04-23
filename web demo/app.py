@@ -8,7 +8,6 @@ from flask import Flask, render_template, request
 from transformers import AutoTokenizer
 
 # 1. Thiết lập đường dẫn gốc để import được config, models, utils
-# Giả sử app.py nằm trong DEANTN_HSD/web demo/
 current_dir = Path(__file__).resolve().parent
 root_path = str(current_dir.parent) 
 if root_path not in sys.path:

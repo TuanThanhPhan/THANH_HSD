@@ -10,5 +10,3 @@ scikit-learn
 pyvi
 regex
 tqdm
-
-tensorboard

@@ -12,10 +12,10 @@ class ViSoBERTModel(nn.Module):
         self.reduce_visobert = nn.Linear(2304, 256)
 
         self.classifier = nn.Sequential(
-            nn.Linear(512, 64),
+            nn.Linear(512, 128),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(64, num_labels)
+            nn.Linear(128, num_labels)
         )
 
     def forward(self, input_ids, attention_mask, char_input=None):
@@ -43,7 +43,7 @@ class ViSoBERTModel(nn.Module):
         
         # Max pooling (masked)
         mask_bool = attention_mask.unsqueeze(-1).bool()
-        bert_masked = bert_out.masked_fill(~mask_bool, -1e4)
+        bert_masked = bert_out.masked_fill(~mask_bool, -1e9)
         max_pooled = torch.max(bert_masked, dim=1).values
         
         # concat

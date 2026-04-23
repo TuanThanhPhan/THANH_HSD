@@ -15,7 +15,6 @@ from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 from transformers import get_linear_schedule_with_warmup
 from sklearn.utils.class_weight import compute_class_weight
-from torch.utils.tensorboard import SummaryWriter
 
 import config
 from seed import set_seed
@@ -26,6 +25,7 @@ from utils.char_vocab import build_char_vocab
 from models.model import HybridHateSpeechModel
 from models.phobert_model import PhoBERTModel
 from models.visobert_model import ViSoBERTModel
+from models.phobertcharCNN_model import PhobertCharCNNModel
 from trainer import Trainer
 
 
@@ -37,7 +37,7 @@ def main():
         "--model_type",
         type=str,
         default="hybrid",
-        choices=["phobert", "visobert", "hybrid"]
+        choices=["phobert", "visobert", "hybrid", "phobert_charcnn"]
     )
 
     parser.add_argument(
@@ -63,10 +63,6 @@ def main():
     cm_folder = os.path.join(config.CM_DIR, args.model_type)
     os.makedirs(cm_folder, exist_ok=True)
 
-    # Khởi tạo TensorBoard Writer
-    log_dir = os.path.join(config.SAVE_DIR, "logs", args.model_type)
-    writer = SummaryWriter(log_dir=log_dir)
-
     last_ckpt = os.path.join(config.SAVE_DIR, f"{args.model_type}_last.pt")
     best_ckpt = os.path.join(config.SAVE_DIR, f"{args.model_type}_best.pt")
 
@@ -75,7 +71,7 @@ def main():
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
-    # ===== LOAD DỮ LIỆU ĐÃ LÀM SẠCH TỪ BƯỚC MERGE =====
+    # ===== LOAD DỮ LIỆU =====
     print("--- Loading pre-cleaned datasets ---")
     train_df = pd.read_csv(config.TRAIN_PATH) 
     dev_df = pd.read_csv(config.DEV_PATH)
@@ -125,6 +121,11 @@ def main():
             args.model_name,
             len(char_to_idx) + 2 # +2 cho PAD và UNK
         )
+    elif args.model_type == "phobert_charcnn":
+        model = PhobertCharCNNModel(
+            args.model_name,
+            len(char_to_idx) + 2
+        )
     elif args.model_type == "phobert":
         model = PhoBERTModel(args.model_name)
     else:
@@ -144,7 +145,7 @@ def main():
     criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.1)
 
     # Thiết lập Optimizer với LR khác nhau cho BERT và các lớp tùy chỉnh
-    if args.model_type == "hybrid":
+    if args.model_type in ["hybrid", "phobert_charcnn"]:
         phobert_params = list(model.phobert.parameters())
         custom_params = [p for n, p in model.named_parameters() if "phobert." not in n]
         optimizer = optim.AdamW([
@@ -167,7 +168,7 @@ def main():
     # Truyền args.model_type vào Trainer
     trainer = Trainer(model, optimizer, criterion, device, scheduler, args.model_type)
 
-     # ===== resume training =====
+    # ===== resume training =====
     start_epoch = 0
     best_f1 = 0
     patience = 0 # Khởi tạo patience mặc định
@@ -187,7 +188,12 @@ def main():
         # Load patience từ checkpoint để không bị mất Early Stopping
         patience = checkpoint.get("patience", 0)
 
+        # Cập nhật scheduler theo số epoch đã qua
+        for _ in range(start_epoch * len(train_loader)):
+            scheduler.step()
+        
         print(f"Resumed from epoch: {start_epoch}, Current Best F1: {best_f1:.4f}, Patience: {patience}")
+        print(f"Scheduler synchronized. Current LR: {optimizer.param_groups[0]['lr']:.2e}")
 
     # ===== training loop =====
     for epoch in range(start_epoch, config.EPOCHS):
@@ -238,7 +244,7 @@ def main():
 
         # Vẽ và lưu ảnh Confusion Matrix vào Drive
         cm = confusion_matrix(labels_all, preds)
-        plt.figure(figsize=(8, 6))
+        plt.figure(figsize=(6, 4))
         sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
                     xticklabels=["Bình thường", "Gây hấn", "Tiêu cực"],
                     yticklabels=["Bình thường", "Gây hấn", "Tiêu cực"])
@@ -252,10 +258,27 @@ def main():
         plt.close() # Đóng figure để giải phóng RAM cho Epoch tiếp theo
         print(f"Đã lưu Confusion Matrix tại: {cm_path}")
 
-        # Ghi log vào TensorBoard
-        writer.add_scalars('Loss/Compare', {'Train': train_loss, 'Val': val_loss}, epoch)
-        writer.add_scalar('F1/Dev', dev_f1, epoch)
+        # Cập nhật logic patience trước khi đóng gói checkpoint
+        if dev_f1 > best_f1:
+            best_f1 = dev_f1
+            patience = 0
+            print("--> Dev F1 improved. Saved best model.")
+            
+            # Chỉ lưu best_ckpt khi có cải thiện
+            best_checkpoint = {
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
+                "best_f1": best_f1,
+                "patience": patience
+            }
+            torch.save(best_checkpoint, best_ckpt)
+        else:
+            patience += 1
+            print(f"--> Patience: {patience}/{config.PATIENCE}")
 
+        # Tạo checkpoint mới với giá trị patience ĐÃ CẬP NHẬT
         checkpoint = {
             "epoch": epoch,
             "model_state_dict": model.state_dict(),
@@ -265,30 +288,12 @@ def main():
             "patience": patience
         }
 
-        # save last checkpoint
+        # Lưu last_ckpt sau khi đã tính toán xong patience
         torch.save(checkpoint, last_ckpt)
-
-        # save best checkpoint
-        if dev_f1 > best_f1:
-
-            best_f1 = dev_f1
-            patience = 0
-
-            checkpoint["best_f1"] = best_f1
-            checkpoint["patience"] = patience
-            torch.save(checkpoint, best_ckpt)
-
-            print("Saved best model")
-
-        else:
-            patience += 1
-            print(f"--> Patience: {patience}/{config.PATIENCE}")
 
         if patience >= config.PATIENCE:
             print("Early stopping")
             break
-    # Đóng writer khi training xong
-    writer.close()
-
+        
 if __name__ == "__main__":
     main()
