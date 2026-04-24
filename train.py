@@ -25,7 +25,6 @@ from utils.char_vocab import build_char_vocab
 from models.model import HybridHateSpeechModel
 from models.phobert_model import PhoBERTModel
 from models.visobert_model import ViSoBERTModel
-from models.phobertcharCNN_model import PhobertCharCNNModel
 from trainer import Trainer
 
 
@@ -37,7 +36,7 @@ def main():
         "--model_type",
         type=str,
         default="hybrid",
-        choices=["phobert", "visobert", "hybrid", "phobert_charcnn"]
+        choices=["phobert", "visobert", "hybrid"]
     )
 
     parser.add_argument(
@@ -71,7 +70,7 @@ def main():
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
-    # ===== LOAD DỮ LIỆU =====
+    # ===== LOAD DỮ LIỆU ĐÃ LÀM SẠCH TỪ BƯỚC MERGE =====
     print("--- Loading pre-cleaned datasets ---")
     train_df = pd.read_csv(config.TRAIN_PATH) 
     dev_df = pd.read_csv(config.DEV_PATH)
@@ -112,19 +111,14 @@ def main():
         char_to_idx
     )
 
-    train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True, drop_last=True)
-    dev_loader = DataLoader(dev_dataset, batch_size=config.BATCH_SIZE)
+    train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True, drop_last=True, num_workers=2)
+    dev_loader = DataLoader(dev_dataset, batch_size=config.BATCH_SIZE, num_workers=2)
 
     # ===== KHỞI TẠO MODEL =====
     if args.model_type == "hybrid":
         model = HybridHateSpeechModel(
             args.model_name,
             len(char_to_idx) + 2 # +2 cho PAD và UNK
-        )
-    elif args.model_type == "phobert_charcnn":
-        model = PhobertCharCNNModel(
-            args.model_name,
-            len(char_to_idx) + 2
         )
     elif args.model_type == "phobert":
         model = PhoBERTModel(args.model_name)
@@ -145,7 +139,7 @@ def main():
     criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.1)
 
     # Thiết lập Optimizer với LR khác nhau cho BERT và các lớp tùy chỉnh
-    if args.model_type in ["hybrid", "phobert_charcnn"]:
+    if args.model_type == "hybrid":
         phobert_params = list(model.phobert.parameters())
         custom_params = [p for n, p in model.named_parameters() if "phobert." not in n]
         optimizer = optim.AdamW([
@@ -165,35 +159,48 @@ def main():
                 num_warmup_steps=num_warmup_steps,
                 num_training_steps=num_training_steps)
 
-    # Truyền args.model_type vào Trainer
-    trainer = Trainer(model, optimizer, criterion, device, scheduler, args.model_type)
-
-    # ===== resume training =====
+    # ===== RESUME TRAINING =====
     start_epoch = 0
     best_f1 = 0
     patience = 0 # Khởi tạo patience mặc định
 
     if args.resume and os.path.exists(last_ckpt):
-
         print("Loading checkpoint...")
-
         checkpoint = torch.load(last_ckpt, map_location=device)
 
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
-
+        
+        # LOAD TRAINING STATE TRƯỚC ĐỂ LẤY START_EPOCH CHUẨN
         start_epoch = checkpoint["epoch"] + 1
         best_f1 = checkpoint["best_f1"]
-        # Load patience từ checkpoint để không bị mất Early Stopping
         patience = checkpoint.get("patience", 0)
-
-        # Cập nhật scheduler theo số epoch đã qua
-        for _ in range(start_epoch * len(train_loader)):
-            scheduler.step()
         
         print(f"Resumed from epoch: {start_epoch}, Current Best F1: {best_f1:.4f}, Patience: {patience}")
+
+        # XỬ LÝ SCHEDULER DỰA TRÊN START_EPOCH ĐÃ LOAD
+        if "scheduler_state_dict" in checkpoint:
+            remaining_epochs = config.EPOCHS - start_epoch
+            if remaining_epochs > 0:
+                remaining_steps = len(train_loader) * remaining_epochs
+                num_warmup_steps = int(0.1 * remaining_steps)
+                
+                # Khởi tạo lại scheduler mới
+                scheduler = get_linear_schedule_with_warmup(
+                    optimizer,
+                    num_warmup_steps=num_warmup_steps,
+                    num_training_steps=remaining_steps
+                )
+                print(f"Scheduler re-initialized for remaining {remaining_epochs} epochs.")
+            else:
+                print("Training epochs completed.")
+        else:
+            print("No scheduler state, continuing...")
+            
         print(f"Scheduler synchronized. Current LR: {optimizer.param_groups[0]['lr']:.2e}")
+
+    # ===== KHỞI TẠO TRAINER =====
+    trainer = Trainer(model, optimizer, criterion, device, scheduler, args.model_type)
 
     # ===== training loop =====
     for epoch in range(start_epoch, config.EPOCHS):
@@ -244,7 +251,7 @@ def main():
 
         # Vẽ và lưu ảnh Confusion Matrix vào Drive
         cm = confusion_matrix(labels_all, preds)
-        plt.figure(figsize=(6, 4))
+        plt.figure(figsize=(4, 4))
         sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
                     xticklabels=["Bình thường", "Gây hấn", "Tiêu cực"],
                     yticklabels=["Bình thường", "Gây hấn", "Tiêu cực"])

@@ -1,2 +1,1 @@
 from .model import HybridHateSpeechModel
-from .phobertcharCNN_model import PhobertCharCNNModel
