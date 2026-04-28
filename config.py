@@ -1,8 +1,8 @@
 BATCH_SIZE = 32
 LR = 2e-5
 MAX_LEN = 128
-EPOCHS = 50
-PATIENCE = 8
+EPOCHS = 30
+PATIENCE = 5
 
 TRAIN_PATH = "data/train.csv"
 DEV_PATH = "data/dev.csv"
