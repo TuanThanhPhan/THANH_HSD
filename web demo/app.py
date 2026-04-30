@@ -50,7 +50,7 @@ print("🔄 Loading model...")
 # Model Hybrid dùng PhoBERT và CharCNN
 model = HybridHateSpeechModel(MODEL_NAME, len(char_to_idx) + 2)
 
-model_path = os.path.join(config.SAVE_DIR, "hybrid_best.pt") # File bạn để trên Drive
+model_path = os.path.join(config.SAVE_DIR, "hybrid_best_ep50.pt") # File bạn để trên Drive
 checkpoint = torch.load(model_path, map_location=DEVICE)
 
 if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:

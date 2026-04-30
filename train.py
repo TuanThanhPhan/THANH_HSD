@@ -62,8 +62,8 @@ def main():
     cm_folder = os.path.join(config.CM_DIR, args.model_type)
     os.makedirs(cm_folder, exist_ok=True)
 
-    last_ckpt = os.path.join(config.SAVE_DIR, f"{args.model_type}_last.pt")
-    best_ckpt = os.path.join(config.SAVE_DIR, f"{args.model_type}_best.pt")
+    last_ckpt = os.path.join(config.SAVE_DIR, f"{args.model_type}_last_ep50.pt")
+    best_ckpt = os.path.join(config.SAVE_DIR, f"{args.model_type}_best_ep50.pt")
 
     print("Model type:", args.model_type)
     print("Checkpoint:", last_ckpt)

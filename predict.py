@@ -72,7 +72,7 @@ def main():
     elif args.model_type == "hybrid":
         model = HybridHateSpeechModel(args.model_name, len(char_to_idx) + 2)
 
-    model_path = os.path.join(config.SAVE_DIR, f"{args.model_type}_best.pt")
+    model_path = os.path.join(config.SAVE_DIR, f"{args.model_type}_best_ep50.pt")
     checkpoint = torch.load(model_path, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.to(device)
