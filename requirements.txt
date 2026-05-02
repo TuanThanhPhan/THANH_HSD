@@ -10,3 +10,7 @@ scikit-learn
 pyvi
 regex
 tqdm
+
+openpyxl 
+seaborn 
+matplotlib
