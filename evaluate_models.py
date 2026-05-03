@@ -63,7 +63,8 @@ def run_evaluation(model_path, loader, device, char_vocab_len, args):
 def main():
     parser = argparse.ArgumentParser(description="So sánh 2 model Hybrid trên tập TestHSD")
     parser.add_argument("--model_name", type=str, default="vinai/phobert-base", help="Base model")
-    parser.add_argument("--data_path", type=str, default="data/TestHSD.xlsx", help="Đường dẫn file test")
+    # SỬA Ở ĐÂY: Đổi đuôi file thành .csv
+    parser.add_argument("--data_path", type=str, default="data/TestHSD.csv", help="Đường dẫn file test")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -71,7 +72,10 @@ def main():
 
     # 1. Load Data
     print(f"--- 📂 Đang tải dữ liệu thực tế: {args.data_path} ---")
-    df = pd.read_excel(args.data_path)
+    
+    # SỬA Ở ĐÂY: Dùng pd.read_csv để đọc file csv thay vì read_excel
+    df = pd.read_csv(args.data_path)
+    
     df = df.dropna(subset=['free_text', 'label_id']).copy()
     texts = df["free_text"].astype(str).values
     labels = df["label_id"].astype(int).values
