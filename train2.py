@@ -11,10 +11,9 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report, confusion_matrix, f1_score
 
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from transformers import AutoTokenizer
 from transformers import get_linear_schedule_with_warmup
-from sklearn.utils.class_weight import compute_class_weight
 
 import config
 from seed import set_seed
@@ -80,10 +79,10 @@ def main():
 
     # CHỈ ÉP KIỂU, KHÔNG CHẠY LẠI PIPELINE
     train_texts = train_df["free_text"].astype(str).values
-    train_labels = train_df["label_id"].values
+    train_labels = train_df["label_id"].astype(int).values
 
     dev_texts = dev_df["free_text"].astype(str).values
-    dev_labels = dev_df["label_id"].values
+    dev_labels = dev_df["label_id"].astype(int).values
 
     # ===== BUILD/LOAD CHAR VOCAB =====
     vocab_path = os.path.join(config.SAVE_DIR, config.CHAR_VOCAB_FILE)
@@ -114,8 +113,45 @@ def main():
         char_to_idx
     )
 
-    train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True, drop_last=True, num_workers=2)
-    dev_loader = DataLoader(dev_dataset, batch_size=config.BATCH_SIZE, num_workers=2)
+    # ===== SAMPLER THEO CLASS =====
+    unique_labels = np.unique(train_labels)
+
+    class_sample_count = {
+        label: np.sum(train_labels == label)
+        for label in unique_labels
+    }
+
+    weight_per_class = {
+    label: min(3.0, 1.0 / (count ** 0.5))  # 🔥 clamp max = 3
+    for label, count in class_sample_count.items()
+    }
+
+    # Gán weight cho từng sample
+    weights = np.array([
+        weight_per_class[label]
+        for label in train_labels
+        ])
+    weights = torch.DoubleTensor(weights)
+
+    sampler = WeightedRandomSampler(
+        weights,
+        num_samples=len(weights),
+        replacement=True
+    )
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=config.BATCH_SIZE,
+        sampler=sampler,           
+        drop_last=False,        
+        num_workers=2
+    )
+
+    dev_loader = DataLoader(
+        dev_dataset,
+        batch_size=config.BATCH_SIZE,
+        num_workers=2
+    )
 
     # ===== KHỞI TẠO MODEL =====
     if args.model_type == "hybrid":
@@ -143,25 +179,17 @@ def main():
         else:
             print("--- CẢNH BÁO: Không tìm thấy Baseline, sẽ train mới hoàn toàn ---")
 
-   # ===== WEIGHTS & OPTIMIZER =====
-    class_weights = compute_class_weight(
-        class_weight="balanced",
-        classes=np.unique(train_labels),
-        y=train_labels
-    )
-    class_weights = torch.tensor(class_weights, dtype=torch.float).to(device)
-
     # ===== Loss function =====
-    criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.15)
+    criterion = nn.CrossEntropyLoss(weight=None, label_smoothing=0.05)
 
     # Thiết lập Optimizer với LR khác nhau cho BERT và các lớp tùy chỉnh
     if args.model_type == "hybrid":
         phobert_params = list(model.phobert.parameters())
         custom_params = [p for n, p in model.named_parameters() if "phobert." not in n]
         optimizer = optim.AdamW([
-            {'params': phobert_params, 'lr': 5e-6}, 
-            {'params': custom_params, 'lr': 1e-4} 
-        ], weight_decay=0.05)
+            {'params': phobert_params, 'lr': 1e-5}, 
+            {'params': custom_params, 'lr': 5e-5} 
+        ], weight_decay=0.01)
     else:
         # Đối với Baseline
         optimizer = optim.AdamW(model.parameters(), lr=config.LR, weight_decay=0.01)
