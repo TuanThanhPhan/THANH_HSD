@@ -78,6 +78,9 @@ def main():
     train_df = pd.read_csv(config.TRAIN_PATH) 
     dev_df = pd.read_csv(config.DEV_PATH)
 
+    # Loại bỏ dữ liệu trùng lặp để tránh F1 ảo
+    train_df = train_df.drop_duplicates(subset=['free_text'])
+
     # CHỈ ÉP KIỂU, KHÔNG CHẠY LẠI PIPELINE
     train_texts = train_df["free_text"].astype(str).values
     train_labels = train_df["label_id"].values
@@ -152,16 +155,16 @@ def main():
     class_weights = torch.tensor(class_weights, dtype=torch.float).to(device)
 
     # ===== Loss function =====
-    criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.1)
+    criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.15)
 
     # Thiết lập Optimizer với LR khác nhau cho BERT và các lớp tùy chỉnh
     if args.model_type == "hybrid":
         phobert_params = list(model.phobert.parameters())
         custom_params = [p for n, p in model.named_parameters() if "phobert." not in n]
         optimizer = optim.AdamW([
-            {'params': phobert_params, 'lr': 1e-5}, 
-            {'params': custom_params, 'lr': 3e-4} 
-        ], weight_decay=0.01)
+            {'params': phobert_params, 'lr': 5e-6}, 
+            {'params': custom_params, 'lr': 1e-4} 
+        ], weight_decay=0.05)
     else:
         # Đối với Baseline
         optimizer = optim.AdamW(model.parameters(), lr=config.LR, weight_decay=0.01)
@@ -175,17 +178,36 @@ def main():
                 num_warmup_steps=num_warmup_steps,
                 num_training_steps=num_training_steps)
 
-    # ===== RESUME (Dành cho trường hợp GĐ3 đang train bị ngắt) =====
+    # =========== RESUME ============
     start_epoch = 0
     best_f1 = 0
-    patience = 0
+    patience = 0 
+
     if args.resume and os.path.exists(last_ckpt):
-        print("Resuming Stage 3 training...")
+        print(f"--- Đang Resume từ checkpoint: {last_ckpt} ---")
         checkpoint = torch.load(last_ckpt, map_location=device)
+        
+        # 1. Nạp trọng số Model và Optimizer
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        
+        # 2. Nạp các biến trạng thái quan trọng
         start_epoch = checkpoint["epoch"] + 1
         best_f1 = checkpoint["best_f1"]
+        patience = checkpoint.get("patience", 0) # Lấy patience cũ, nếu ko có thì mặc định 0
+        
+        # 3. Đồng bộ lại Scheduler
+        if "scheduler_state_dict" in checkpoint:
+            # Tính toán lại scheduler dựa trên số epoch còn lại để đảm bảo tính liên tục
+            remaining_epochs = config.EPOCHS - start_epoch
+            if remaining_epochs > 0:
+                remaining_steps = len(train_loader) * remaining_epochs
+                num_warmup_steps = int(0.1 * remaining_steps) 
+                scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+                print(f"-> Đã nạp lại trạng thái Scheduler.")
+        
+        print(f"-> Resume thành công: Epoch tiếp theo {start_epoch+1}, Best F1 hiện tại: {best_f1:.4f}, Patience: {patience}")
+    # ============================================================================
 
     # ===== KHỞI TẠO TRAINER =====
     trainer = Trainer(model, optimizer, criterion, device, scheduler, args.model_type)
@@ -203,11 +225,8 @@ def main():
         print(f"• Train loss: {train_loss:.4f} | Val loss: {val_loss:.4f} | Dev F1: {dev_f1:.4f}")
         print(f"• Lớp F1: BT: {report['Bình thường']['f1-score']:.4f} | GH: {report['Gây hấn']['f1-score']:.4f} | TC: {report['Tiêu cực']['f1-score']:.4f}")
 
-        # CM Table
+        # CM Table & Plot
         cm = confusion_matrix(labels_all, preds)
-        print("-" * 60 + "\n[CONFUSION MATRIX]\n", pd.DataFrame(cm, index=["BT", "GH", "TC"], columns=["BT", "GH", "TC"]))
-
-        # CM Plot
         plt.figure(figsize=(4, 4))
         sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=["BT", "GH", "TC"], yticklabels=["BT", "GH", "TC"])
         plt.savefig(os.path.join(cm_folder, f"epoch_{epoch+1}.png"))
@@ -215,7 +234,8 @@ def main():
 
         # Cập nhật Best và Patience
         if dev_f1 > best_f1:
-            best_f1, patience = dev_f1, 0
+            best_f1 = dev_f1
+            patience = 0 # Reset patience khi đạt đỉnh mới
             torch.save({
                 "epoch": epoch, "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(), "scheduler_state_dict": scheduler.state_dict(),
@@ -223,10 +243,10 @@ def main():
             }, best_ckpt)
             print("--> Dev F1 improved. Saved best model.")
         else:
-            patience += 1
+            patience += 1 # Tăng patience nếu không cải thiện
             print(f"--> Patience: {patience}/{config.PATIENCE}")
 
-        # Luôn lưu last_ckpt
+        # LUÔN LƯU last_ckpt để resume nếu bị ngắt
         torch.save({
             "epoch": epoch, "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(), "scheduler_state_dict": scheduler.state_dict(),
@@ -234,7 +254,7 @@ def main():
         }, last_ckpt)
 
         if patience >= config.PATIENCE:
-            print("Early stopping!")
+            print("Early stopping triggered!")
             break
 
 if __name__ == "__main__":

@@ -63,7 +63,7 @@ def run_evaluation(model_path, loader, device, char_vocab_len, args):
 def main():
     parser = argparse.ArgumentParser(description="So sánh 2 model Hybrid trên tập TestHSD")
     parser.add_argument("--model_name", type=str, default="vinai/phobert-base", help="Base model")
-    # SỬA Ở ĐÂY: Đổi đuôi file thành .csv
+
     parser.add_argument("--data_path", type=str, default="data/TestHSD.csv", help="Đường dẫn file test")
     args = parser.parse_args()
 
@@ -71,7 +71,7 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
     # 1. Load Data
-    print(f"--- 📂 Đang tải dữ liệu thực tế: {args.data_path} ---")
+    print(f"--- Đang tải dữ liệu thực tế: {args.data_path} ---")
     
     # SỬA Ở ĐÂY: Dùng pd.read_csv để đọc file csv thay vì read_excel
     df = pd.read_csv(args.data_path)
@@ -98,7 +98,7 @@ def main():
 
     for name, filename in model_files.items():
         full_path = os.path.join(config.SAVE_DIR, filename)
-        print(f"\n🚀 Đang đánh giá model: {name} ({filename})...")
+        print(f"\n Đang đánh giá model: {name} ({filename})...")
         
         preds = run_evaluation(full_path, loader, device, len(char_to_idx), args)
         
@@ -135,13 +135,11 @@ def main():
 
     # 5. In bảng tổng kết
     print("\n" + "="*40)
-    print("🏆 BẢNG SO SÁNH KẾT QUẢ MACRO-F1")
+    print(" BẢNG SO SÁNH KẾT QUẢ MACRO-F1")
     print("="*40)
     summary_df = pd.DataFrame(results_summary)
     print(summary_df.to_string(index=False))
     print("="*40)
-    print(f"📁 Đã lưu file so sánh trực tiếp tại: {compare_path}")
-    print(f"📁 Confusion Matrix và file lỗi lưu tại: {config.SAVE_DIR}")
 
 if __name__ == "__main__":
     main()
