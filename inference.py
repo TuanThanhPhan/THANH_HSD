@@ -33,7 +33,7 @@ def plot_confusion_matrix(y_true, y_pred, model_type, data_name):
 def main():
     parser = argparse.ArgumentParser(description="Inference and Error Analysis on Real-world Data")
     parser.add_argument("--model_name", type=str, default="vinai/phobert-base", help="Pretrained model base")
-    parser.add_argument("--data_path", type=str, default="data/dataHSD.xlsx", help="Đường dẫn tới file dữ liệu thực tế")
+    parser.add_argument("--data_path", type=str, default="data/data_HSD.xlsx", help="Đường dẫn tới file dữ liệu thực tế")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -133,7 +133,7 @@ def main():
         other_cols = [c for c in df_errors.columns if c not in cols]
         df_errors = df_errors[cols + other_cols]
 
-        error_save_path = os.path.join(config.SAVE_DIR, "hybrid_error_analysis_dataHSD.xlsx")
+        error_save_path = os.path.join(config.SAVE_DIR, "error_analysis.xlsx")
         df_errors.to_excel(error_save_path, index=False)
         print(f"[*] Đã xuất thành công {len(df_errors)} mẫu lỗi ra file: {error_save_path}")
     else:
