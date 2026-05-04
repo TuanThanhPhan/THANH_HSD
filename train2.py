@@ -11,7 +11,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report, confusion_matrix, f1_score
 
-from torch.utils.data import DataLoader, WeightedRandomSampler
+from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 from transformers import get_linear_schedule_with_warmup
 
@@ -61,8 +61,8 @@ def main():
     cm_folder = os.path.join(config.CM_DIR, args.model_type)
     os.makedirs(cm_folder, exist_ok=True)
 
-    last_ckpt = os.path.join(config.SAVE_DIR, f"{args.model_type}_last_extend_ep50.pt")
-    best_ckpt = os.path.join(config.SAVE_DIR, f"{args.model_type}_best_extend_ep50.pt")
+    last_ckpt = os.path.join(config.SAVE_DIR, f"{args.model_type}_last_extend.pt")
+    best_ckpt = os.path.join(config.SAVE_DIR, f"{args.model_type}_best_extend.pt")
 
     # Đường dẫn nạp model Baseline đã luyện ở GĐ1
     baseline_ckpt = os.path.join(config.SAVE_DIR, f"{args.model_type}_best_ep50.pt")
@@ -113,36 +113,10 @@ def main():
         char_to_idx
     )
 
-    # ===== SAMPLER THEO CLASS =====
-    unique_labels = np.unique(train_labels)
-
-    class_sample_count = {
-        label: np.sum(train_labels == label)
-        for label in unique_labels
-    }
-
-    weight_per_class = {
-    label: min(3.0, 1.0 / (count ** 0.5))  
-    for label, count in class_sample_count.items()
-    }
-
-    # Gán weight cho từng sample
-    weights = np.array([
-        weight_per_class[label]
-        for label in train_labels
-        ])
-    weights = torch.DoubleTensor(weights)
-
-    sampler = WeightedRandomSampler(
-        weights,
-        num_samples=len(weights),
-        replacement=True
-    )
-
     train_loader = DataLoader(
         train_dataset,
         batch_size=config.BATCH_SIZE,
-        sampler=sampler,           
+        shuffle=True,        
         drop_last=False,        
         num_workers=2
     )
@@ -180,15 +154,15 @@ def main():
             print("--- CẢNH BÁO: Không tìm thấy Baseline, sẽ train mới hoàn toàn ---")
 
     # ===== Loss function =====
-    criterion = nn.CrossEntropyLoss(weight=None, label_smoothing=0.05)
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.05)
 
     # Thiết lập Optimizer với LR khác nhau cho BERT và các lớp tùy chỉnh
     if args.model_type == "hybrid":
         phobert_params = list(model.phobert.parameters())
         custom_params = [p for n, p in model.named_parameters() if "phobert." not in n]
         optimizer = optim.AdamW([
-            {'params': phobert_params, 'lr': 1e-5}, 
-            {'params': custom_params, 'lr': 5e-5} 
+            {'params': phobert_params, 'lr': 8e-6}, 
+            {'params': custom_params, 'lr': 2e-5} 
         ], weight_decay=0.01)
     else:
         # Đối với Baseline
@@ -196,7 +170,7 @@ def main():
 
     # ===== Warmup Scheduler =====
     num_training_steps = len(train_loader) * config.EPOCHS
-    num_warmup_steps = int(0.1 * num_training_steps)
+    num_warmup_steps = int(0.05 * num_training_steps)
 
     scheduler = get_linear_schedule_with_warmup(
                 optimizer,
@@ -296,7 +270,7 @@ def main():
         }, last_ckpt)
 
         if patience >= config.PATIENCE:
-            print("Early stopping triggered!")
+            print("Early stopping!")
             break
 
 if __name__ == "__main__":
