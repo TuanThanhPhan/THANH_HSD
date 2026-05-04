@@ -122,7 +122,7 @@ def main():
     }
 
     weight_per_class = {
-    label: min(3.0, 1.0 / (count ** 0.5))  # 🔥 clamp max = 3
+    label: min(3.0, 1.0 / (count ** 0.5))  
     for label, count in class_sample_count.items()
     }
 
