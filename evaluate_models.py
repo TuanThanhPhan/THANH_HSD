@@ -63,16 +63,22 @@ def main():
     parser = argparse.ArgumentParser(description="So sánh 2 model Hybrid trên tập TestHSD")
     parser.add_argument("--model_name", type=str, default="vinai/phobert-base", help="Base model")
 
-    parser.add_argument("--data_path", type=str, default="data/TestHSD.csv", help="Đường dẫn file test")
+    parser.add_argument("--data_path", type=str, default="data/TestHSD.xlsx", help="Đường dẫn file test")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
     # 1. Load Data
-    print(f"--- Đang tải dữ liệu thực tế: {args.data_path} ---")
-    
-    df = pd.read_csv(args.data_path)
+    print(f"--- Đang tải dữ liệu: {args.data_path} ---")
+    try:
+        if args.data_path.endswith('.xlsx'):
+            df = pd.read_excel(args.data_path)
+        else:
+            df = pd.read_csv(args.data_path)
+    except Exception as e:
+        print(f"❌ Lỗi khi đọc file: {e}")
+        return
     
     df = df.dropna(subset=['free_text', 'label_id']).copy()
     texts = df["free_text"].astype(str).values
