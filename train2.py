@@ -78,9 +78,6 @@ def main():
     train_df = pd.read_csv(config.TRAIN_PATH) 
     dev_df = pd.read_csv(config.DEV_PATH)
 
-    # Loại bỏ dữ liệu trùng lặp để tránh F1 ảo
-    train_df = train_df.drop_duplicates(subset=['free_text'])
-
     # CHỈ ÉP KIỂU, KHÔNG CHẠY LẠI PIPELINE
     train_texts = train_df["free_text"].astype(str).values
     train_labels = train_df["label_id"].values
@@ -177,7 +174,7 @@ def main():
                 optimizer,
                 num_warmup_steps=num_warmup_steps,
                 num_training_steps=num_training_steps)
-
+    
     # =========== RESUME ============
     start_epoch = 0
     best_f1 = 0
@@ -191,20 +188,15 @@ def main():
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         
-        # 2. Nạp các biến trạng thái quan trọng
+        # 2. Nạp trạng thái Scheduler
+        if "scheduler_state_dict" in checkpoint:
+            scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+            print("-> Đã nạp lại trạng thái Scheduler từ file.")
+        
+        # 3. Nạp các biến trạng thái quan trọng
         start_epoch = checkpoint["epoch"] + 1
         best_f1 = checkpoint["best_f1"]
-        patience = checkpoint.get("patience", 0) # Lấy patience cũ, nếu ko có thì mặc định 0
-        
-        # 3. Đồng bộ lại Scheduler
-        if "scheduler_state_dict" in checkpoint:
-            # Tính toán lại scheduler dựa trên số epoch còn lại để đảm bảo tính liên tục
-            remaining_epochs = config.EPOCHS - start_epoch
-            if remaining_epochs > 0:
-                remaining_steps = len(train_loader) * remaining_epochs
-                num_warmup_steps = int(0.1 * remaining_steps) 
-                scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
-                print(f"-> Đã nạp lại trạng thái Scheduler.")
+        patience = checkpoint.get("patience", 0)
         
         print(f"-> Resume thành công: Epoch tiếp theo {start_epoch+1}, Best F1 hiện tại: {best_f1:.4f}, Patience: {patience}")
     # ============================================================================
@@ -220,15 +212,37 @@ def main():
         dev_f1 = f1_score(labels_all, preds, average="macro")
         report = classification_report(labels_all, preds, target_names=["Bình thường", "Gây hấn", "Tiêu cực"], output_dict=True, zero_division=0)
         
-        # Log thông tin
-        print(f"\n{'='*60}\nEPOCH {epoch+1}/{config.EPOCHS} SUMMARY\n{'-'*60}")
-        print(f"• Train loss: {train_loss:.4f} | Val loss: {val_loss:.4f} | Dev F1: {dev_f1:.4f}")
-        print(f"• Lớp F1: BT: {report['Bình thường']['f1-score']:.4f} | GH: {report['Gây hấn']['f1-score']:.4f} | TC: {report['Tiêu cực']['f1-score']:.4f}")
+        lr_phobert = optimizer.param_groups[0]['lr']
+        lr_custom = optimizer.param_groups[1]['lr'] if len(optimizer.param_groups) > 1 else None
 
-        # CM Table & Plot
+        # Hiển thị Summary 
+        print("\n" + "="*60)
+        print(f"EPOCH {epoch+1}/{config.EPOCHS} SUMMARY")
+        print("-" * 60)
+        print(f"• Train loss: {train_loss:.4f} | Val loss: {val_loss:.4f}")
+        print(f"• Dev F1: {dev_f1:.4f}")
+        print(f"• Dev F1 (Lớp): BT: {report['Bình thường']['f1-score']:.4f} | GH: {report['Gây hấn']['f1-score']:.4f} | TC: {report['Tiêu cực']['f1-score']:.4f}")
+        
+        if lr_custom:
+            print(f"• L.R. PhoBERT: {lr_phobert:.2e} | L.R. Custom: {lr_custom:.2e}")
+        else:
+            print(f"• Learning Rate: {lr_phobert:.2e}")
+        print("="*60)
+
+        # In Confusion Matrix dạng bảng
         cm = confusion_matrix(labels_all, preds)
+        target_names = ["Bình thường", "Gây hấn", "Tiêu cực"]
+        cm_df = pd.DataFrame(cm, index=target_names, columns=target_names)
+        print("-" * 60)
+        print("[CONFUSION MATRIX]")
+        print(cm_df)
+        print("-" * 60)
+
+        # Vẽ và lưu ảnh CM
         plt.figure(figsize=(4, 4))
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=["BT", "GH", "TC"], yticklabels=["BT", "GH", "TC"])
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=target_names, yticklabels=target_names)
+        plt.title(f'CM - {args.model_type.upper()} - Ep {epoch+1}')
+        plt.tight_layout()
         plt.savefig(os.path.join(cm_folder, f"epoch_{epoch+1}.png"))
         plt.close()
 

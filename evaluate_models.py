@@ -20,7 +20,6 @@ def plot_confusion_matrix(y_true, y_pred, model_name, save_dir):
     cm = confusion_matrix(y_true, y_pred)
     plt.figure(figsize=(8, 6))
     
-    # Tự động lấy số lượng class để tránh lỗi khi dataset có thêm các sub-categories mở rộng
     num_classes = cm.shape[0]
     class_labels = [f"Nhãn {i}" for i in range(num_classes)]
     
@@ -73,7 +72,6 @@ def main():
     # 1. Load Data
     print(f"--- Đang tải dữ liệu thực tế: {args.data_path} ---")
     
-    # SỬA Ở ĐÂY: Dùng pd.read_csv để đọc file csv thay vì read_excel
     df = pd.read_csv(args.data_path)
     
     df = df.dropna(subset=['free_text', 'label_id']).copy()
@@ -115,10 +113,6 @@ def main():
             
             # Vẽ CM
             plot_confusion_matrix(labels, preds, name, config.SAVE_DIR)
-            
-            # Xuất file lỗi riêng cho từng model (nếu cần xem rẽ nhánh)
-            df_errors = df[df['label_id'] != df[f'pred_{name}']]
-            df_errors.to_excel(os.path.join(config.SAVE_DIR, f"errors_{name}.xlsx"), index=False)
 
     # 4. Tạo file Excel so sánh chi tiết 2 mô hình
     if "pred_Base_Model" in df.columns and "pred_Extended_Model" in df.columns:
@@ -138,7 +132,8 @@ def main():
     print(" BẢNG SO SÁNH KẾT QUẢ MACRO-F1")
     print("="*40)
     summary_df = pd.DataFrame(results_summary)
-    print(summary_df.to_string(index=False))
+    summary_df['Macro_F1'] = summary_df['Macro_F1'].map('{:.4f}'.format)
+    print(summary_df.to_string(index=False, justify='center'))
     print("="*40)
 
 if __name__ == "__main__":
