@@ -14,6 +14,7 @@ from sklearn.metrics import classification_report, confusion_matrix, f1_score
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 from transformers import get_linear_schedule_with_warmup
+from sklearn.utils.class_weight import compute_class_weight
 
 import config
 from seed import set_seed
@@ -43,6 +44,10 @@ def main():
         type=str,
         default="vinai/phobert-base"
     )
+
+    parser.add_argument("--lr_scale", type=float, default=0.25, help="Scale LR so với giai đoạn 1")
+    parser.add_argument("--label_smoothing", type=float, default=0.02, help="Label smoothing")
+    parser.add_argument("--freeze_bert", action="store_true", help="Freeze phần lớn PhoBERT layers")
 
     parser.add_argument(
         "--resume",
@@ -83,6 +88,7 @@ def main():
 
     dev_texts = dev_df["free_text"].astype(str).values
     dev_labels = dev_df["label_id"].astype(int).values
+    print(f"Train samples: {len(train_texts)} | Dev samples: {len(dev_texts)}")
 
     # ===== BUILD/LOAD CHAR VOCAB =====
     vocab_path = os.path.join(config.SAVE_DIR, config.CHAR_VOCAB_FILE)
@@ -153,24 +159,39 @@ def main():
         else:
             print("--- CẢNH BÁO: Không tìm thấy Baseline, sẽ train mới hoàn toàn ---")
 
+    # ==================== OPTIONAL FREEZE BERT ====================
+    if args.freeze_bert and args.model_type == "hybrid":
+        for name, param in model.phobert.named_parameters():
+            if not name.startswith('encoder.layer.11'):   # chỉ unfreeze layer cuối
+                param.requires_grad = False
+        print("Đã freeze hầu hết PhoBERT layers (chỉ train layer 11 + custom heads)")
+
+    # ===== WEIGHTS & OPTIMIZER =====
+    class_weights = compute_class_weight(
+        class_weight="balanced",
+        classes=np.unique(train_labels),
+        y=train_labels
+    )
+    class_weights = torch.tensor(class_weights, dtype=torch.float).to(device)
+
     # ===== Loss function =====
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.05)
+    criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=args.label_smoothing)
 
     # Thiết lập Optimizer với LR khác nhau cho BERT và các lớp tùy chỉnh
     if args.model_type == "hybrid":
-        phobert_params = list(model.phobert.parameters())
+        phobert_params = [p for n, p in model.named_parameters() if "phobert." in n and p.requires_grad]
         custom_params = [p for n, p in model.named_parameters() if "phobert." not in n]
+
         optimizer = optim.AdamW([
-            {'params': phobert_params, 'lr': 8e-6}, 
-            {'params': custom_params, 'lr': 2e-5} 
+            {'params': phobert_params, 'lr': 8e-6 * args.lr_scale},
+            {'params': custom_params, 'lr': 2e-5 * args.lr_scale}
         ], weight_decay=0.01)
     else:
-        # Đối với Baseline
-        optimizer = optim.AdamW(model.parameters(), lr=config.LR, weight_decay=0.01)
+        optimizer = optim.AdamW(model.parameters(), lr=config.LR * args.lr_scale, weight_decay=0.01)
 
     # ===== Warmup Scheduler =====
     num_training_steps = len(train_loader) * config.EPOCHS
-    num_warmup_steps = int(0.05 * num_training_steps)
+    num_warmup_steps = int(0.03 * num_training_steps)
 
     scheduler = get_linear_schedule_with_warmup(
                 optimizer,
