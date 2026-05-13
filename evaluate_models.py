@@ -95,7 +95,7 @@ def main():
     # 3. Danh sách model cần test
     model_files = {
         "Base_Model": "hybrid_best_ep50.pt",
-        "Extended_Model": "hybrid_best_extend_ep50.pt"
+        "Extended_Model": "hybrid_best_extend.pt"
     }
 
     results_summary = []

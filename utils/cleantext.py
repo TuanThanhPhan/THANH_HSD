@@ -51,8 +51,17 @@ def clean_text_pipeline(text):
     text = " ".join([teencode_dict.get(w, w) for w in words])
     
     # Giữ lại chữ cái, số, dấu câu và Emoji
-    text = re.sub(r'[^a-z0-9àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ\s!?.,\U0001F300-\U0001FAFF]', ' ', text)
+    text = re.sub(
+        r'[^a-z0-9àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễ'
+        r'ìíịỉĩòóọỏõôồốộổỗơờớợởỡ'
+        r'ùúụủũưừứựửữỳýỵỷỹđ\s!?.,\U0001F300-\U0001FAFF]',
+        ' ',
+        text
+    )
     
     # Xóa khoảng trắng thừa
     text = re.sub(r'\s+', ' ', text).strip()
+
+    # Tách từ tiếng Việt
+    text = ViTokenizer.tokenize(text)
     return text
