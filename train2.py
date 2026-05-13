@@ -47,7 +47,7 @@ def main():
     parser.add_argument(
     "--label_smoothing",
     type=float,
-    default=0.0,
+    default=0.1,
     help="Label smoothing"
     )
 
@@ -125,7 +125,7 @@ def main():
         train_dataset,
         batch_size=config.BATCH_SIZE,
         shuffle=True,        
-        drop_last=False,        
+        drop_last=True,        
         num_workers=2
     )
 
@@ -161,12 +161,15 @@ def main():
         else:
             print("--- CẢNH BÁO: Không tìm thấy Baseline, sẽ train mới hoàn toàn ---")
 
-    # ===== Loss function =====
-    criterion = nn.CrossEntropyLoss(label_smoothing=args.label_smoothing)
+    # ===== LOSS FUNCTION + CLASS WEIGHT =====
+    class_weights = torch.tensor([1.0, 1.25, 1.65], dtype=torch.float32).to(device)
+    criterion = nn.CrossEntropyLoss(
+        weight=class_weights, 
+        label_smoothing=args.label_smoothing
+    )
 
     # ======================================================
     # OPTIMIZER
-    # ======================================================
 
     if args.model_type == "hybrid":
 
@@ -204,7 +207,7 @@ def main():
 
     # ===== Warmup Scheduler =====
     num_training_steps = len(train_loader) * config.EPOCHS
-    num_warmup_steps = int(0.1 * num_training_steps)
+    num_warmup_steps = int(0.15 * num_training_steps)
 
     scheduler = get_linear_schedule_with_warmup(
                 optimizer,
