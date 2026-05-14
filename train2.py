@@ -10,10 +10,12 @@ import argparse
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report, confusion_matrix, f1_score
+from sklearn.model_selection import train_test_split
 
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 from transformers import get_linear_schedule_with_warmup
+from sklearn.utils.class_weight import compute_class_weight
 
 import config
 from seed import set_seed
@@ -79,10 +81,18 @@ def main():
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
-    # ===== LOAD DỮ LIỆU ĐÃ LÀM SẠCH TỪ BƯỚC MERGE =====
-    print("--- Loading pre-cleaned datasets ---")
-    train_df = pd.read_csv("data/adapt_train.csv") 
-    dev_df = pd.read_csv(config.DEV_PATH)
+    # ===== LẤY 10% DỮ LIỆU ĐÃ LÀM SẠCH TỪ BƯỚC MERGE LÀM TẬP DEV =====
+    print(f"--- Loading Adaptation Data: data/adapt_train.csv ---")
+    full_df = pd.read_csv("data/adapt_train.csv")
+    full_df['free_text'] = full_df['free_text'].astype(str)
+
+    # Trích 10% tập adapt_train ra làm tập dev nội bộ
+    train_df, dev_df = train_test_split(
+        full_df, 
+        test_size=0.1, 
+        random_state=42, 
+        stratify=full_df['label_id']
+    )
 
     # CHỈ ÉP KIỂU, KHÔNG CHẠY LẠI PIPELINE
     train_texts = train_df["free_text"].astype(str).values
@@ -162,7 +172,16 @@ def main():
             print("--- CẢNH BÁO: Không tìm thấy Baseline, sẽ train mới hoàn toàn ---")
 
     # ===== LOSS FUNCTION + CLASS WEIGHT =====
-    class_weights = torch.tensor([1.0, 1.25, 1.65], dtype=torch.float32).to(device)
+    # Lấy phân bố nhãn từ train_labels
+    unique_labels = np.unique(train_labels)
+    class_weights_auto = compute_class_weight(
+        class_weight='balanced',
+        classes=unique_labels,
+        y=train_labels
+    )
+    class_weights = torch.tensor(class_weights_auto, dtype=torch.float32).to(device)
+    print(f"Class weights (auto-balanced): {class_weights}")
+
     criterion = nn.CrossEntropyLoss(
         weight=class_weights, 
         label_smoothing=args.label_smoothing
@@ -191,7 +210,7 @@ def main():
             },
             {
                 'params': custom_params,
-                'lr': 3e-5
+                'lr': 2e-5
             }
         ],
         weight_decay=0.01

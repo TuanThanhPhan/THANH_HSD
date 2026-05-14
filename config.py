@@ -4,7 +4,7 @@ MAX_LEN = 128
 EPOCHS = 50
 PATIENCE = 8
 
-TRAIN_PATH = "data/train_extend.csv"
+TRAIN_PATH = "data/ViHSD/train.csv"
 DEV_PATH = "data/ViHSD/dev.csv"
 TEST_PATH = "data/ViHSD/test.csv"
 
