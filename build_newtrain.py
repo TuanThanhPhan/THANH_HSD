@@ -5,12 +5,9 @@ import random
 import config 
 
 # ====================== CẤU HÌNH ======================
-BASE_PATH = r'D:\DE AN TOT NGHIEP\HSD_DEAN\data'
-error_file_path = os.path.join(BASE_PATH, "error_analysis.xlsx")
-
-# File uncertainty từ compute_uncertainty_vihsd.py (lưu trong SAVE_DIR)
+error_file_path = os.path.join(config.SAVE_DIR, "error_analysis.xlsx")
 UNCERTAINTY_FILE = os.path.join(config.SAVE_DIR, "vihsd_train_uncertainty.csv")
-OUTPUT_FILE = os.path.join(BASE_PATH, "adapt_train.csv")
+OUTPUT_FILE = os.path.join(config.SAVE_DIR, "adapt_train.csv")
 
 RANDOM_STATE = 42
 OLD_NEW_RATIO = 2.0   # Tỷ lệ mẫu cũ : mẫu error
@@ -59,7 +56,7 @@ def augment_text(text, label):
 
 # ==================== MAIN PROCESSING ====================
 # 1. Load 1936 mẫu sai từ error_analysis.xlsx
-print("--- Loading 1936 error samples from real-world test ---")
+print(f"--- Loading error samples from: {error_file_path} ---")
 df_error = pd.read_excel(error_file_path)
 df_error['free_text'] = df_error['free_text'].astype(str)
 
@@ -144,7 +141,6 @@ for lbl in [0, 1, 2]:
 # Điều chỉnh nếu tổng needed_from_old != n_old_target (làm tròn)
 total_needed = sum(needed_from_old.values())
 if total_needed != n_old_target:
-    # Điều chỉnh nhãn 1 (ưu tiên) hoặc nhãn 0
     diff = n_old_target - total_needed
     needed_from_old[1] += diff  # Gán phần dư cho nhãn 1
 
@@ -192,7 +188,7 @@ for lbl in [0, 1, 2]:
     cnt = old_counts.get(lbl, 0)
     print(f"  Label {lbl}: {cnt} samples ({cnt/len(df_old)*100:.1f}%)")
 
-# ==================== 6. MERGE & LƯU ====================
+# ==================== 6. MERGE & LƯU (vào SAVE_DIR) ====================
 df_error_clean = df_error_aug[['free_text', 'label_id']].copy()
 final_df = pd.concat([df_error_clean, df_old]).sample(frac=1, random_state=RANDOM_STATE).reset_index(drop=True)
 
@@ -208,5 +204,6 @@ print(f"\n  TOTAL: {total} samples")
 print(f"  Old:New = {len(df_old)}:{len(df_error_clean)} (1:{len(df_error_clean)/len(df_old):.2f})")
 print(f"{'='*60}")
 
+os.makedirs(config.SAVE_DIR, exist_ok=True)
 final_df.to_csv(OUTPUT_FILE, index=False, encoding='utf-8-sig')
 print(f"\n[SUCCESS] Saved GĐ3 train to: {OUTPUT_FILE}")
