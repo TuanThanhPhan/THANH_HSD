@@ -39,7 +39,7 @@ def main():
     parser.add_argument(
         "--baseline_ckpt",
         type=str,
-        default="hybird_best_ep50.pt",
+        default="hybrid_best_ep50.pt",
         help="Tên file checkpoint model GĐ1 trong thư mục SAVE_DIR"
     )
 
@@ -53,7 +53,7 @@ def main():
     parser.add_argument(
         "--output",
         type=str,
-        default="data/vihsd_train_uncertainty.csv",
+        default=None,
         help="File CSV đầu ra chứa uncertainty"
     )
 
@@ -65,17 +65,52 @@ def main():
 
     args = parser.parse_args()
 
+    # Nếu không chỉ định output, lưu vào SAVE_DIR
+    if args.output is None:
+        args.output = os.path.join(config.SAVE_DIR, "vihsd_train_uncertainty.csv")
+        print(f"[INFO] Output not specified, using SAVE_DIR: {args.output}")
+
     set_seed(42)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # ==================== 1. LOAD DATA ====================
     print(f"[INFO] Loading train data: {args.train_data}")
-    df = pd.read_csv(args.train_data)
-    df['free_text'] = df['free_text'].astype(str)
+    df_raw = pd.read_csv(args.train_data)
+
+    # Xử lý NaN thực sự trước khi astype(str)
+    df_raw['free_text'] = df_raw['free_text'].fillna('#ERROR!').astype(str)
+
+    # Lọc bỏ các mẫu lỗi/NaN/empty/#ERROR!/ngắn vô nghĩa
+    text_lower = df_raw['free_text'].str.lower().str.strip()
+
+    # Các pattern cần loại bỏ (dùng contains cho linh hoạt)
+    has_error = text_lower.str.contains('#error!', na=False, regex=False)
+    has_nan = text_lower.isin(['nan', 'nat', 'none', 'null', ''])
+    too_short = df_raw['free_text'].str.len() < 5  # Ít nhất 5 ký tự
+
+    # Kết hợp: chỉ giữ mẫu KHÔNG có lỗi, KHÔNG NaN, và đủ dài
+    mask_valid = ~(has_error | has_nan | too_short)
+
+    n_invalid = (~mask_valid).sum()
+    if n_invalid > 0:
+        print(f"[WARNING] Found {n_invalid} invalid samples. Removing before uncertainty computation.")
+        invalid_samples = df_raw.loc[~mask_valid, 'free_text'].head(10).tolist()
+        print(f"  Examples: {invalid_samples}")
+
+        # In breakdown
+        print(f"    - Contains #ERROR!: {has_error.sum()}")
+        print(f"    - NaN/None/Empty: {has_nan.sum()}")
+        print(f"    - Too short (<5 chars): {too_short.sum()}")
+
+    df = df_raw[mask_valid].copy().reset_index(drop=True)
+    print(f"[INFO] Valid samples after filtering: {len(df)} / {len(df_raw)}")
+
+    # Kiểm tra lại top 10 để đảm bảo không còn #ERROR!
+    if len(df) > 0:
+        print(f"[INFO] Sample valid texts: {df['free_text'].head(3).tolist()}")
 
     texts = df["free_text"].values
     labels = df["label_id"].astype(int).values
-    print(f"[INFO] Total samples: {len(df)}")
 
     # ==================== 2. TOKENIZER & CHAR VOCAB ====================
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
@@ -105,9 +140,9 @@ def main():
     loader = DataLoader(
         dataset,
         batch_size=args.batch_size,
-        shuffle=False,      
+        shuffle=False,
         num_workers=2,
-        drop_last=False     
+        drop_last=False
     )
 
     # ==================== 4. KHỞI TẠO MODEL ====================
@@ -152,20 +187,16 @@ def main():
 
     with torch.no_grad():
         for batch_idx, batch in enumerate(loader):
-            # Chuyển batch lên device, bỏ qua 'labels'
             batch_inputs = {
                 k: v.to(device)
                 for k, v in batch.items()
-                if k != "labels"
+                if k not in ("label", "labels")
             }
 
             logits = model(**batch_inputs)
             probs = torch.softmax(logits, dim=-1)
 
-            # Entropy: H = -sum(p * log(p))
             entropy = -torch.sum(probs * torch.log(probs + 1e-10), dim=-1)
-
-            # Confidence = max probability
             confidence, pred_labels = torch.max(probs, dim=-1)
 
             all_entropy.extend(entropy.cpu().numpy().tolist())
@@ -183,14 +214,13 @@ def main():
     df_out['confidence'] = all_confidence
     df_out['predicted_label'] = all_pred
 
-    # (Tùy chọn) Lưu thêm xác suất từng nhãn để phân tích sau
     probs_array = np.array(all_probs)
     df_out['prob_label_0'] = probs_array[:, 0]
     df_out['prob_label_1'] = probs_array[:, 1]
     df_out['prob_label_2'] = probs_array[:, 2]
 
-    # Tạo thư mục nếu chưa có
-    os.makedirs(os.path.dirname(args.output), exist_ok=True)
+    # Đảm bảo thư mục SAVE_DIR tồn tại
+    os.makedirs(config.SAVE_DIR, exist_ok=True)
     df_out.to_csv(args.output, index=False, encoding='utf-8-sig')
 
     print(f"\n[SUCCESS] Saved uncertainty file: {args.output}")
@@ -198,7 +228,7 @@ def main():
 
     # ==================== 8. THỐNG KÊ NHANH ====================
     print("\n[UNCERTAINTY STATISTICS BY LABEL]")
-    print("-" * 50)
+    print("-" * 60)
     for lbl in sorted(df_out['label_id'].unique()):
         sub = df_out[df_out['label_id'] == lbl]
         print(
@@ -209,13 +239,21 @@ def main():
             f"n={len(sub)}"
         )
 
-    # Top 10 samples có uncertainty cao nhất (hard negatives)
     print("\n[TOP 10 HARDEST SAMPLES (highest uncertainty)]")
-    print("-" * 50)
+    print("-" * 60)
     top_hard = df_out.nlargest(10, 'uncertainty')[['free_text', 'label_id', 'predicted_label', 'uncertainty', 'confidence']]
     for idx, row in top_hard.iterrows():
-        text = row['free_text'][:60] + "..." if len(row['free_text']) > 60 else row['free_text']
+        text = row['free_text'][:70] + "..." if len(row['free_text']) > 70 else row['free_text']
         print(f"  unc={row['uncertainty']:.4f} | true={int(row['label_id'])} | pred={int(row['predicted_label'])} | {text}")
+
+    # Thống kê: % mẫu bị dự đoán sai (error-aware)
+    df_out['is_wrong'] = (df_out['label_id'] != df_out['predicted_label']).astype(int)
+    print("\n[ERROR RATE BY LABEL]")
+    print("-" * 60)
+    for lbl in sorted(df_out['label_id'].unique()):
+        sub = df_out[df_out['label_id'] == lbl]
+        err_rate = sub['is_wrong'].mean()
+        print(f"Label {lbl}: error_rate={err_rate:.4f} ({err_rate*100:.1f}%)")
 
 
 if __name__ == "__main__":
