@@ -10,7 +10,7 @@ UNCERTAINTY_FILE = os.path.join(config.SAVE_DIR, "vihsd_train_uncertainty.csv")
 OUTPUT_FILE = os.path.join(config.SAVE_DIR, "adapt_train.csv")
 
 RANDOM_STATE = 42
-OLD_NEW_RATIO = 2.0   # Tỷ lệ mẫu cũ : mẫu error
+OLD_NEW_RATIO = 2.0
 
 def set_seed(seed=42):
     random.seed(seed)
@@ -19,26 +19,33 @@ def set_seed(seed=42):
 
 set_seed(RANDOM_STATE)
 
-# ==================== CÁC HÀM TĂNG CƯỜNG DỮ LIỆU ====================
+# ==================== AUGMENT MẠNH HƠN THEO NHÃN ====================
 def augment_text(text, label):
-    """Giữ nguyên logic augment cho 1936 mẫu sai thực tế"""
+    """
+    Augment mạnh theo nhãn:
+    - Nhãn 1 (Gây hấn): augment mạnh nhất (x4) vì là vùng yếu nhất
+    - Nhãn 2 (Tiêu cực): augment vừa (x3)
+    - Nhãn 0 (Bình thường): nhẹ (x2) vì đã nhiều và dễ
+    """
     if not isinstance(text, str) or len(text) < 5:
         return [text]
 
     results = [text]
     words = text.split()
 
+    # --- Các phép augment cơ bản (tất cả nhãn) ---
+
     # 1. Thêm từ lóng/Emoji vào cuối
-    slangs = [" vl", " vcl", " vãi", " @@", " :))", " :v", " !", " !!!"]
-    if random.random() < 0.5:
+    slangs = [" vl", " vcl", " vãi", " @@", " :))", " :v", " !", " !!!", " haha", " đmm"]
+    if random.random() < 0.6:
         results.append(text + random.choice(slangs))
 
-    # 2. Lặp âm cuối
+    # 2. Lặp âm cuối (Vocal Stretching)
     if len(words) > 0:
         target_idx = random.randint(0, len(words) - 1)
         if len(words[target_idx]) > 2:
             new_words = words.copy()
-            new_words[target_idx] = new_words[target_idx] + new_words[target_idx][-1] * 3
+            new_words[target_idx] = new_words[target_idx] + new_words[target_idx][-1] * random.randint(2, 4)
             results.append(" ".join(new_words))
 
     # 3. Hoán đổi từ (Random Swap)
@@ -49,14 +56,48 @@ def augment_text(text, label):
         results.append(" ".join(new_words))
 
     # 4. Typo nhẹ
-    if random.random() < 0.3:
-        results.append(text.replace("ch", "tr").replace("n", "nn"))
+    if random.random() < 0.4:
+        typo_text = text
+        if random.random() < 0.5:
+            typo_text = typo_text.replace("ch", "tr")
+        if random.random() < 0.5:
+            typo_text = typo_text.replace("n", "nn")
+        if random.random() < 0.3:
+            typo_text = typo_text.replace("l", "n")
+        results.append(typo_text)
 
-    return list(set(results))  # Xóa trùng
+    # --- Augment mạnh riêng cho nhãn 1 và 2 ---
+
+    if label in [1, 2]:
+        # 5. Xóa dấu câu ngẫu nhiên (mô phỏng viết vội)
+        if random.random() < 0.5:
+            no_punc = text.translate(str.maketrans('', '', '.,;:!?'))
+            results.append(no_punc)
+
+        # 6. Viết hoa ngẫu nhiên (mô phỏng cảm xúc mạnh)
+        if random.random() < 0.4:
+            words_upper = words.copy()
+            for i in range(min(3, len(words_upper))):
+                if random.random() < 0.5:
+                    words_upper[i] = words_upper[i].upper()
+            results.append(" ".join(words_upper))
+
+        # 7. Thêm từ nhấn mạnh (nhãn 1 đặc biệt)
+        if label == 1 and random.random() < 0.5:
+            intensifiers = [" quá", " cực", " vcl", " thật", " kinh"]
+            results.append(text + random.choice(intensifiers))
+
+    # Nhãn 1: sinh thêm biến thể
+    if label == 1 and len(results) < 5:
+        # 8. Đảo ngược thứ tự câu (nếu đủ dài)
+        if len(words) >= 5:
+            rev_words = words[::-1]
+            results.append(" ".join(rev_words))
+
+    return list(set(results))
 
 # ==================== MAIN PROCESSING ====================
-# 1. Load 1936 mẫu sai từ error_analysis.xlsx
-print(f"--- Loading error samples from: {error_file_path} ---")
+print("--- Loading 1936 error samples ---")
 df_error = pd.read_excel(error_file_path)
 df_error['free_text'] = df_error['free_text'].astype(str)
 
@@ -64,8 +105,8 @@ print(f"Raw error samples: {len(df_error)}")
 print("Error distribution (raw):")
 print(df_error['label_id'].value_counts().sort_index())
 
-# 2. Augment error data
-print("\n--- Augmenting error samples ---")
+# Augment error data
+print("\n--- Augmenting error samples (stronger for label 1) ---")
 aug_list = []
 for _, row in df_error.iterrows():
     augmented_variants = augment_text(row['free_text'], row['label_id'])
@@ -77,18 +118,15 @@ print(f"Error samples after augmentation: {len(df_error_aug)}")
 print("Error distribution after augment:")
 print(df_error_aug['label_id'].value_counts().sort_index())
 
-# ==================== 3. LOAD UNCERTAINTY FILE ====================
+# ==================== LOAD UNCERTAINTY ====================
 print(f"\n--- Loading uncertainty file: {UNCERTAINTY_FILE} ---")
 if not os.path.exists(UNCERTAINTY_FILE):
-    raise FileNotFoundError(
-        f"Không tìm thấy {UNCERTAINTY_FILE}\n"
-        f"Vui lòng chạy compute_uncertainty_vihsd.py trước."
-    )
+    raise FileNotFoundError(f"Không tìm thấy {UNCERTAINTY_FILE}")
 
 df_vihsd_unc = pd.read_csv(UNCERTAINTY_FILE)
 print(f"Loaded ViHSD uncertainty: {len(df_vihsd_unc)} samples")
 
-# ==================== 4. TÍNH SỐ MẪU CŨ CẦN LẤY ====================
+# ==================== TÍNH SỐ MẪU CŨ ====================
 n_error = len(df_error_aug)
 n_old_target = int(n_error * OLD_NEW_RATIO)
 print(f"\n{'='*60}")
@@ -97,38 +135,18 @@ print(f"Old:new ratio      : 1:{OLD_NEW_RATIO}")
 print(f"Old samples target : {n_old_target}")
 print(f"{'='*60}")
 
-# ==================== PER-LABEL UNCERTAINTY SAMPLING ====================
-"""
-VẤN ĐỀ: Nhãn 0 có uncertainty toàn cục rất cao (mean=0.96) vì model GĐ1 
-gần như random guess với nhãn 0. Nếu sort uncertainty toàn cục, 
-~80% mẫu cũ sẽ là nhãn 0 → GĐ3 bị nhãn 0 áp đảo, nhãn 1 (đang yếu nhất, 
-recall=0.30) không được bổ sung đủ.
-
-GIẢI PHÁP: Chia slot mẫu cũ theo từng nhãn riêng biệt (per-label).
-Trong mỗi nhãn, chọn top uncertainty CAO NHẤT của nhãn đó.
-Tỷ lệ slot được tính để:
-- Nhãn 1 (Gây hấn) được ưu tiên cao nhất (vùng yếu nhất từ log test)
-- Nhãn 0 không biến mất nhưng cũng không áp đảo
-- Nhãn 2 được bổ sung hợp lý
-"""
-
-# Tính số lượng error data theo nhãn
+# ==================== PER-LABEL ALLOCATION ====================
 error_counts = df_error_aug['label_id'].value_counts().sort_index()
-n_err_0 = error_counts.get(0, 0)
-n_err_1 = error_counts.get(1, 0)
-n_err_2 = error_counts.get(2, 0)
 
-print(f"\nError samples per label: 0={n_err_0}, 1={n_err_1}, 2={n_err_2}")
-
+# Điều chỉnh target: nhãn 1 nhiều hơn, nhãn 0 ít hơn
 TARGET_PCT = {
-    0: 0.30,   
-    1: 0.55,   
+    0: 0.25,   
+    1: 0.60,   
     2: 0.15    
 }
 
 total_gd3 = n_error + n_old_target
 
-# Tính số mẫu cũ cần lấy cho mỗi nhãn
 target_per_label = {}
 needed_from_old = {}
 for lbl in [0, 1, 2]:
@@ -138,11 +156,11 @@ for lbl in [0, 1, 2]:
     target_per_label[lbl] = target_total
     needed_from_old[lbl] = need
 
-# Điều chỉnh nếu tổng needed_from_old != n_old_target (làm tròn)
+# Điều chỉnh làm tròn
 total_needed = sum(needed_from_old.values())
 if total_needed != n_old_target:
     diff = n_old_target - total_needed
-    needed_from_old[1] += diff  # Gán phần dư cho nhãn 1
+    needed_from_old[1] += diff
 
 print(f"\n[PER-LABEL ALLOCATION]")
 print("-" * 60)
@@ -153,7 +171,7 @@ for lbl in [0, 1, 2]:
 print("-" * 60)
 print(f"Total old needed: {sum(needed_from_old.values())} (target: {n_old_target})")
 
-# ==================== 5. CHỌN MẪU CŨ THEO TỪNG NHÃN ====================
+# ==================== CHỌN MẪU CŨ ====================
 final_old_list = []
 
 for lbl in [0, 1, 2]:
@@ -161,22 +179,28 @@ for lbl in [0, 1, 2]:
     if need <= 0:
         continue
 
-    # Lọc pool theo nhãn
     pool = df_vihsd_unc[df_vihsd_unc['label_id'] == lbl].copy()
-
     if len(pool) == 0:
         print(f"[WARNING] No samples in ViHSD for label {lbl}")
         continue
 
-    # Chọn top uncertainty CAO NHẤT trong nhãn này
-    pool_sorted = pool.sort_values('uncertainty', ascending=False)
-    n_take = min(need, len(pool_sorted))
-    selected = pool_sorted.head(n_take)[['free_text', 'label_id', 'uncertainty']].copy()
+    # Với nhãn 0: chọn uncertainty THẤP (easy samples, đỡ làm model bối rối)
+    # Với nhãn 1,2: chọn uncertainty CAO (hard negatives)
+    if lbl == 0:
+        # Lấy mẫu nhãn 0 có uncertainty thấp nhất (model GĐ1 tự tin → pattern rõ ràng)
+        pool_sorted = pool.sort_values('uncertainty', ascending=True)
+        n_take = min(need, len(pool_sorted))
+        selected = pool_sorted.head(n_take)[['free_text', 'label_id', 'uncertainty']].copy()
+        print(f"\n[Label {lbl}] Selected {n_take} EASY samples (low uncertainty)")
+    else:
+        pool_sorted = pool.sort_values('uncertainty', ascending=False)
+        n_take = min(need, len(pool_sorted))
+        selected = pool_sorted.head(n_take)[['free_text', 'label_id', 'uncertainty']].copy()
+        print(f"\n[Label {lbl}] Selected {n_take}/{need} HARD samples (high uncertainty)")
 
-    final_old_list.append(selected)
-    print(f"\n[Label {lbl}] Selected {n_take}/{need} needed (pool size: {len(pool)})")
     print(f"  Uncertainty range: [{selected['uncertainty'].min():.4f}, {selected['uncertainty'].max():.4f}]")
     print(f"  Mean uncertainty: {selected['uncertainty'].mean():.4f}")
+    final_old_list.append(selected)
 
 df_old = pd.concat(final_old_list, ignore_index=True) if final_old_list else pd.DataFrame()
 df_old = df_old[['free_text', 'label_id']].copy()
@@ -188,7 +212,7 @@ for lbl in [0, 1, 2]:
     cnt = old_counts.get(lbl, 0)
     print(f"  Label {lbl}: {cnt} samples ({cnt/len(df_old)*100:.1f}%)")
 
-# ==================== 6. MERGE & LƯU (vào SAVE_DIR) ====================
+# ==================== MERGE & LƯU ====================
 df_error_clean = df_error_aug[['free_text', 'label_id']].copy()
 final_df = pd.concat([df_error_clean, df_old]).sample(frac=1, random_state=RANDOM_STATE).reset_index(drop=True)
 
