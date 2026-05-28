@@ -4,18 +4,22 @@ import os
 import random
 import config 
 
-# ====================== CẤU HÌNH ======================
+# ====================== CẤU HÌNH ĐÃ TỐI ƯU ======================
 error_file_path = os.path.join(config.SAVE_DIR, "error_analysis.xlsx")
 VIHSD_TRAIN = config.TRAIN_PATH
 OUTPUT_FILE = os.path.join(config.SAVE_DIR, "adapt_train.csv")
 
 RANDOM_STATE = 42
 
-ERROR_OVERSAMPLE_TIMES = 2
+ERROR_OVERSAMPLE_MAP = {
+    0: 2,  
+    1: 4,  
+    2: 3   
+}
 
-NORMAL_REPLAY = 4000    
-AGGRESSIVE_REPLAY = 2000  
-HATE_REPLAY = 1000      
+NORMAL_REPLAY = 5500     
+AGGRESSIVE_REPLAY = 4000 
+HATE_REPLAY = 1200       
 
 def set_seed(seed=42):
     random.seed(seed)
@@ -65,7 +69,7 @@ def augment_text(text, label):
     return list(set(results))
 
 # ==================== MAIN ====================
-# 1. Load 1936 mẫu sai từ SAVE_DIR
+# 1. Load mẫu sai từ SAVE_DIR
 print(f"--- Loading error samples from: {error_file_path} ---")
 df_error = pd.read_excel(error_file_path)
 df_error['free_text'] = df_error['free_text'].astype(str)
@@ -76,17 +80,20 @@ err_counts = df_error['label_id'].value_counts().sort_index()
 for lbl in [0, 1, 2]:
     print(f"  Label {lbl}: {err_counts.get(lbl, 0)} ({err_counts.get(lbl,0)/len(df_error)*100:.1f}%)")
 
-# 2. Oversample x2
-print(f"\n--- Oversampling error data x{ERROR_OVERSAMPLE_TIMES} ---")
+# 2. Áp dụng Chiến lược Oversample theo class định sẵn
+print(f"\n--- Class-specific Oversampling based on model weaknesses ---")
 aug_list = []
 for _, row in df_error.iterrows():
-    for _ in range(ERROR_OVERSAMPLE_TIMES):
-        variants = augment_text(row['free_text'], row['label_id'])
+    lbl = row['label_id']
+    # Lấy hệ số nhân bản riêng biệt cho từng nhãn từ cấu hình nâng cấp
+    oversample_times = ERROR_OVERSAMPLE_MAP.get(lbl, 2)
+    for _ in range(oversample_times):
+        variants = augment_text(row['free_text'], lbl)
         for v in variants:
-            aug_list.append({'free_text': v, 'label_id': row['label_id']})
+            aug_list.append({'free_text': v, 'label_id': lbl})
 
 df_error_aug = pd.DataFrame(aug_list).drop_duplicates(subset=['free_text'])
-print(f"After oversample x{ERROR_OVERSAMPLE_TIMES}: {len(df_error_aug)}")
+print(f"After Adaptive Oversampling: {len(df_error_aug)}")
 print("Error distribution after augment:")
 err_aug_counts = df_error_aug['label_id'].value_counts().sort_index()
 for lbl in [0, 1, 2]:
@@ -97,7 +104,7 @@ print(f"\n--- Loading ViHSD train: {VIHSD_TRAIN} ---")
 df_vihsd = pd.read_csv(VIHSD_TRAIN)
 df_vihsd['free_text'] = df_vihsd['free_text'].astype(str)
 
-# Lọc invalid
+# Lọc mẫu không hợp lệ
 text_lower = df_vihsd['free_text'].str.lower().str.strip()
 has_error = text_lower.str.contains('#error!', na=False, regex=False)
 has_nan = text_lower.isin(['nan', 'nat', 'none', 'null', ''])
@@ -106,13 +113,9 @@ mask_valid = ~(has_error | has_nan | too_short)
 df_vihsd = df_vihsd[mask_valid].copy()
 
 print(f"ViHSD valid: {len(df_vihsd)}")
-print("ViHSD distribution:")
-vihsd_counts = df_vihsd['label_id'].value_counts().sort_index()
-for lbl in [0, 1, 2]:
-    print(f"  Label {lbl}: {vihsd_counts.get(lbl, 0)} ({vihsd_counts.get(lbl,0)/len(df_vihsd)*100:.1f}%)")
 
-# 4. Random stratified sampling
-print(f"\n--- Random sampling ViHSD ---")
+# 4. Random stratified sampling với tỉ lệ Replay tối ưu mới
+print(f"\n--- Random sampling ViHSD with updated ratios ---")
 print(f"Target: Nhãn 0={NORMAL_REPLAY}, Nhãn 1={AGGRESSIVE_REPLAY}, Nhãn 2={HATE_REPLAY}")
 
 replay_list = []
@@ -125,21 +128,16 @@ for lbl, target_n in [(0, NORMAL_REPLAY), (1, AGGRESSIVE_REPLAY), (2, HATE_REPLA
     print(f"  Label {lbl}: took {n_take}/{target_n} (available: {available})")
 
 df_replay = pd.concat(replay_list)[['free_text', 'label_id']].copy()
-print(f"\nTotal replay: {len(df_replay)}")
-print("Replay distribution:")
-rep_counts = df_replay['label_id'].value_counts().sort_index()
-for lbl in [0, 1, 2]:
-    print(f"  Label {lbl}: {rep_counts.get(lbl, 0)} ({rep_counts.get(lbl,0)/len(df_replay)*100:.1f}%)")
 
-# 5. Merge
+# 5. Merge tập dữ liệu mới nhất
 print(f"\n{'='*60}")
-print("MERGE: Error (oversampled x2) + ViHSD (random stratified)")
+print("MERGE: Adaptive Error Oversampling + Optimized ViHSD Replay")
 print(f"{'='*60}")
 
 df_error_clean = df_error_aug[['free_text', 'label_id']].copy()
 final_df = pd.concat([df_error_clean, df_replay]).sample(frac=1, random_state=RANDOM_STATE).reset_index(drop=True)
 
-print("\nFINAL TRAIN STATISTICS:")
+print("\nFINAL UPDATED TRAIN STATISTICS:")
 final_counts = final_df['label_id'].value_counts().sort_index()
 total = len(final_df)
 for lbl in [0, 1, 2]:
@@ -147,19 +145,18 @@ for lbl in [0, 1, 2]:
     pct = cnt/total*100
     print(f"  Label {lbl}: {cnt:>5} samples ({pct:>5.1f}%)")
 
-print(f"\n  TOTAL: {total} samples")
-print(f"  Error:Replay = {len(df_error_clean)}:{len(df_replay)} (1:{len(df_replay)/len(df_error_clean):.2f})")
+print(f"\n  TOTAL NEW TRAIN DATA: {total} samples")
+print(f"  Error:Replay Ratio = 1:{len(df_replay)/len(df_error_clean):.2f}")
 
-# Tính tỷ lệ mục tiêu so với thực tế TestHSD
-print(f"\n  So với TestHSD (52/33/15%):")
+print(f"\n  Tỷ lệ phân phối lý tưởng so với TestHSD (Target: 52/33/15%):")
 for lbl, test_pct in [(0, 52), (1, 33), (2, 15)]:
     train_pct = final_counts.get(lbl, 0)/total*100
     diff = train_pct - test_pct
-    print(f"    Label {lbl}: Train {train_pct:.1f}% vs Test {test_pct}% (diff: {diff:+.1f}%)")
+    print(f"    Label {lbl}: New Train {train_pct:.1f}% vs Test {test_pct}% (diff: {diff:+.1f}%)")
 
 print(f"{'='*60}")
 
-# Đảm bảo thư mục data/ tồn tại
+# Đảm bảo thư mục data/ tồn tại và lưu tập train mới nhất
 os.makedirs("data", exist_ok=True)
 final_df.to_csv(OUTPUT_FILE, index=False, encoding='utf-8-sig')
-print(f"\n[SUCCESS] Saved to: {OUTPUT_FILE}")
+print(f"\n[SUCCESS] Saved updated dataset to: {OUTPUT_FILE}")
